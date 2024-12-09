@@ -13,18 +13,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./blackjack-game
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
+          cache-dependency-path: './blackjack-game/package-lock.json'
       - run: npm ci
       - run: npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build
+          path: blackjack-game/build
 
   deploy:
     needs: build
