@@ -412,7 +412,7 @@
     </div>
 
     {#if $splitHandsStore.isSplit}
-      <SplitHands calculateScore={calculateScore} />
+      <SplitHands />
     {:else}
       <div class="hand-section player-section">
         <h3 class="hand-title">Your Hand ({playerScore})</h3>
@@ -437,7 +437,7 @@
     {/if}
 
     <div class="controls">
-      <BettingControls {playerHand} {gameInProgress} bind:canDoubleDown />
+      <BettingControls {gameInProgress} bind:canDoubleDown />
       <button 
         on:click={dealCards} 
         disabled={gameInProgress}
@@ -484,7 +484,9 @@
     margin-bottom: 1rem;
     padding: 1rem;
     border-radius: 12px;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
+    z-index: 1;
   }
 
   @media (max-width: 375px) {
@@ -497,7 +499,10 @@
     padding: 0.5rem;
     min-height: 150px;
     position: relative;
-    overflow: visible;
+    overflow: visible !important;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 500px;
   }
 
   .hand-title {
@@ -724,6 +729,7 @@
     transform: rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 30px - 60px));
     transition: transform 0.3s ease;
     will-change: transform;
+    z-index: calc(var(--card-index) + 1);
   }
 
   .card:last-child {
@@ -732,7 +738,7 @@
 
   .card:hover {
     transform: translateY(-20px) rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 30px - 60px));
-    z-index: 10;
+    z-index: 100;
   }
 
   .controls {
@@ -811,367 +817,6 @@
       0 6px 20px rgba(0,0,0,0.3),
       0 0 30px rgba(243,156,18,0.3),
       inset 0 2px 2px rgba(255,255,255,0.2);
-  }
-
-  .balance-display {
-    display: flex;
-    justify-content: space-between;
-    padding: 1rem;
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: var(--text-color);
-  }
-
-  .betting-area {
-    margin-top: 2rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .betting-area.hidden {
-    display: none;
-  }
-
-  .chip-rack {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .chip {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: 4px dashed rgba(255, 255, 255, 0.5);
-    background: var(--chip-color);
-    color: white;
-    font-weight: bold;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-    box-shadow: 
-      0 4px 8px rgba(0, 0, 0, 0.2),
-      inset 0 2px 3px rgba(255, 255, 255, 0.3);
-  }
-
-  .chip:hover:not(:disabled) {
-    transform: translateY(-5px);
-    box-shadow: 
-      0 8px 16px rgba(0, 0, 0, 0.3),
-      inset 0 2px 3px rgba(255, 255, 255, 0.3);
-  }
-
-  .chip:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .clear-bet {
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    background: var(--nav-bg);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  .clear-bet:hover {
-    background: var(--border-color);
-  }
-
-  @media (max-width: 768px) {
-    .chip {
-      width: 50px;
-      height: 50px;
-      font-size: 0.9rem;
-    }
-
-    .controls {
-      padding: 0.5rem;
-      gap: 0.5rem;
-    }
-
-    .casino-button {
-      min-width: 75px;
-      padding: 0.75rem;
-      font-size: 1rem;
-    }
-
-    .card {
-      transform: rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 20px - 40px));
-    }
-
-    .card:hover {
-      transform: translateY(-10px) rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 20px - 40px));
-    }
-
-    .status-text {
-      font-size: 1rem;
-      padding: 0.4rem 1.2rem;
-    }
-  }
-
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(3px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-  }
-
-  .modal {
-    background: #2c3e50;
-    padding: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    max-width: 90%;
-    width: 400px;
-  }
-
-  .modal-content {
-    text-align: center;
-  }
-
-  .modal-content h2 {
-    font-size: 2rem;
-    margin-bottom: 1.5rem;
-    color: #fff;
-  }
-
-  .modal-content h2.win {
-    color: #2ecc71;
-  }
-
-  .modal-content h2.lose {
-    color: #e74c3c;
-  }
-
-  .current-bet {
-    text-align: center;
-    color: #ffd700;
-    font-size: 1.2rem;
-    font-weight: bold;
-    margin-bottom: 1rem;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-  }
-
-  .player-stats {
-    text-align: center;
-    margin-bottom: 0.8rem;
-  }
-
-  .stat-line {
-    color: #ffd700;
-    font-size: 1rem;
-    font-weight: bold;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-    margin: 0.2rem 0;
-  }
-
-  .game-area {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-  }
-
-  @media (max-width: 375px) {
-    .game-area {
-      margin-top: 3rem;
-    }
-  }
-
-  /* Side-by-side layout for wider screens */
-  @media (min-width: 768px) and (max-height: 1200px) {
-    .game-area {
-      flex-direction: row;
-      justify-content: center;
-      align-items: flex-start;
-      gap: 4rem;
-      padding: 0 2rem;
-      margin-top: 6rem; /* Increased space for deck and status */
-    }
-
-    .hand-section {
-      flex: 1;
-      max-width: 45%;
-      min-width: 300px;
-    }
-
-    /* Keep deck area at top */
-    .deck-area {
-      position: absolute;
-      top: 4rem; /* Below status message */
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1;
-    }
-
-    /* Handle split hands */
-    .split-hands-container {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      max-width: 45%;
-    }
-
-    .split-hand {
-      flex: 1;
-      min-width: 200px;
-      max-width: calc(50% - 0.5rem);
-    }
-
-    /* Adjust card sizes and rotation */
-    .card img {
-      width: 80px;
-    }
-
-    .card {
-      transform: rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 20px - 40px));
-    }
-
-    .card:hover {
-      transform: translateY(-10px) rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 20px - 40px));
-    }
-  }
-
-  /* Adjustments for shorter heights */
-  @media (min-width: 768px) and (max-height: 800px) {
-    .game-area {
-      margin-top: 5rem;
-    }
-
-    .deck-area {
-      top: 3rem;
-    }
-
-    .card img {
-      width: 70px;
-    }
-
-    .hand-title {
-      font-size: 1.2rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .player-stats {
-      font-size: 0.9rem;
-      margin-bottom: 0.5rem;
-    }
-  }
-
-  /* Ensure betting menus don't overlap */
-  .betting-dropdown, 
-  .side-betting-dropdown {
-    @media (min-width: 768px) and (max-height: 1200px) {
-      position: fixed;
-      bottom: 5rem;
-      max-height: calc(100vh - 12rem);
-      overflow-y: auto;
-      z-index: 1000;
-    }
-  }
-
-  /* iPhone SE and similar small screens */
-  @media (max-width: 375px) {
-    .game-container {
-      padding: 0.25rem;
-      padding-bottom: 70px;
-      margin-top: -1.5rem;
-    }
-
-    .dealer-section {
-      margin-top: -1.5rem;
-      padding: 0.25rem;
-    }
-
-    .player-section {
-      margin-top: -1rem;
-    }
-
-    .hand-title {
-      font-size: 0.75rem;
-      margin-bottom: 0.16rem;
-      color: rgba(255, 255, 255, 0.9);
-    }
-
-    .dealer-cards, .player-cards {
-      min-height: 90px;
-      margin-bottom: 0.25rem;
-    }
-
-    .card img {
-      width: 55px;
-    }
-
-    /* Adjust card positioning for larger cards */
-    .card {
-      transform: rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 18px - 36px));
-    }
-
-    .card:hover {
-      transform: translateY(-5px) rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 18px - 36px));
-    }
-
-    .controls {
-      padding: 0.35rem;
-      gap: 0.25rem;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      z-index: 1002;
-    }
-
-    .casino-button {
-      min-width: 45px;
-      padding: 0.35rem 0.5rem;
-      font-size: 0.75rem;
-    }
-
-    /* Game status positioning */
-    .game-status {
-      transform: translate(-50%, -60px);
-    }
-
-    .game-status.betting-open:not(.gameplay-actions):not(.sidebets-open),
-    .game-status.betting-open.gameplay-actions:not(.sidebets-open) {
-      bottom: 1 !important;
-    }
-
-    .game-status.sidebets-open {
-      bottom: 20rem !important;
-    }
-
-    .status-text {
-      font-size: 0.75rem;
-      padding: 0.25rem 0.7rem;
-    }
-
-    /* Make balance/bet text smaller */
-    .balance, .bet {
-      font-size: 0.65rem;
-    }
-
-    /* Adjust header text */
-    .learn-blackjack-header {
-      font-size: 0.65rem;
-      padding: 0.25rem;
-    }
-
-    .learn-blackjack-header .balance,
-    .learn-blackjack-header .bet {
-      font-size: 0.6rem;
-    }
   }
 
   .floating-number {

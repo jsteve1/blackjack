@@ -14,7 +14,6 @@
   });
 
   let customBetAmount = '';
-  export let playerHand: Card[] = [];
   export let gameInProgress: boolean = false;
   export let canDoubleDown: boolean;
   

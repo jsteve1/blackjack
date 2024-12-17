@@ -52,10 +52,18 @@
     <div class="side-bets-grid">
       {#each Object.values($sideBetStore.bets) as bet}
         {#if bet.isAvailable}
-          <div 
+          <button 
             class="side-bet-card" 
             class:selected={selectedBetType === bet.id}
             on:click={() => selectedBetType = selectedBetType === bet.id ? null : bet.id}
+            on:keydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                selectedBetType = selectedBetType === bet.id ? null : bet.id;
+              }
+            }}
+            type="button"
+            aria-expanded={selectedBetType === bet.id}
+            aria-label={`${bet.name} side bet option`}
           >
             <div class="bet-header">
               <h4>{bet.name}</h4>
@@ -113,7 +121,7 @@
                 </div>
               </div>
             {/if}
-          </div>
+          </button>
         {/if}
       {/each}
     </div>
@@ -169,6 +177,12 @@
     padding: 1rem;
     cursor: pointer;
     transition: all 0.3s ease;
+    width: 100%;
+    text-align: left;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
   }
 
   .side-bet-card:hover {
@@ -230,6 +244,7 @@
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+    justify-content: end;
   }
 
   .chip {

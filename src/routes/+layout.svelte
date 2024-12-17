@@ -55,13 +55,20 @@
 
 {#if showHelp}
   <div class="modal-overlay" 
-       on:click={() => showHelp = false} 
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="help-title"
+       on:click={() => showHelp = false}
+       on:keydown={(e) => {
+         if (e.key === 'Escape') showHelp = false;
+       }} 
        transition:fade={{ duration: 200 }}>
     <div class="modal" 
+         role="document"
          on:click|stopPropagation 
          transition:fly={{ y: 20, duration: 300 }}>
       <div class="modal-content">
-        <h2>How to Play Blackjack</h2>
+        <h2 id="help-title">How to Play Blackjack</h2>
         <div class="help-text">
           <p>🎯 <strong>Goal:</strong> Get closer to 21 than the dealer without going over.</p>
           <p>🎴 <strong>Card Values:</strong></p>
@@ -307,31 +314,5 @@
     .balance-bet-info-cont {
       justify-content: flex-start;
     }
-  }
-
-  .balance-info-cont {
-    width: fit-content;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: .9rem;
-    padding: 8px 16px;
-    border-radius: 15px;
-    background-color: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-  }
-
-  .bet-info-cont {
-    width: fit-content;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: .9rem;
-    padding: 8px 16px;
-    border-radius: 15px;
-    background-color: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
   }
 </style> 

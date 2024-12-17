@@ -2,8 +2,6 @@
   import { splitHandsStore } from '../stores/splitHands';
   import { fly } from 'svelte/transition';
   import type { Card } from '../types/card';
-
-  export let calculateScore: (hand: Card[]) => number;
 </script>
 
 <div class="split-hands-container" class:is-split={$splitHandsStore.isSplit}>
@@ -62,6 +60,8 @@
     border-radius: 12px;
     background: rgba(44, 62, 80, 0.3);
     transition: all 0.3s ease;
+    position: relative;
+    overflow: visible;
   }
 
   .split-hand.active {
@@ -98,7 +98,10 @@
     padding: 0.5rem;
     min-height: 150px;
     position: relative;
-    overflow: visible;
+    overflow: visible !important;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 300px;
   }
 
   .card {
@@ -107,6 +110,7 @@
     transform: rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 30px - 60px));
     transition: transform 0.3s ease;
     will-change: transform;
+    z-index: calc(var(--card-index) + 1);
   }
 
   .card img {
@@ -121,7 +125,7 @@
 
   .card:hover {
     transform: translateY(-20px) rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 30px - 60px));
-    z-index: 10;
+    z-index: 100;
   }
 
   @media (max-width: 768px) {
