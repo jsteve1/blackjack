@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
+  import { bettingStore } from '$lib/stores/betting';
+    import OdometerNumber from '$lib/components/OdometerNumber.svelte';
   let isDarkMode = false;
   let showHelp = false;
 
@@ -21,9 +23,10 @@
 
 <div class="app">
   <nav class="navbar">
-    <div class="logo">
-      <h1><span class="spade">♠️</span> Learn&nbsp;Blackjack</h1>
-    </div>
+    <div class="navbar-left">
+      <div class="logo">
+        <h1><span class="spade">♠️</span> Learn&nbsp;Blackjack</h1>
+      </div>
     <div class="navbar-controls">
       <button class="help-button" on:click={() => showHelp = true}>?</button>
       <button class="theme-toggle" on:click={toggleTheme}>
@@ -33,6 +36,15 @@
           ☀️
         {/if}
       </button>
+      </div>
+    </div>
+    <div class="balance-bet-info-cont"> 
+      <div class="balance-info-cont">
+        Balance: <OdometerNumber value={$bettingStore.balance} isBalance={true} />
+      </div>
+      <div class="bet-info-cont">
+        Bet: <OdometerNumber value={$bettingStore.currentBet} />
+      </div>
     </div>
   </nav>
   
@@ -119,6 +131,27 @@
     padding: 0 2rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     z-index: 1000;
+  }
+
+  .navbar-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  @media (max-width: 590px) {
+    .navbar {
+      padding: 0 1rem;
+      height: 90px;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: flex-start;
+    }
+    .navbar-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
   }
 
   .logo h1 {
@@ -230,5 +263,75 @@
 
   .spade {
     filter: brightness(10);
+  }
+
+  .balance-display {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  }
+
+  .balance, .current-bet {
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+
+  .current-bet {
+    color: #2ecc71;
+  }
+
+  @media (max-width: 768px) {
+    .balance-display {
+      display: none;
+    }
+
+    .balance, .current-bet {
+      display: none;
+    }
+  }
+
+  .balance-bet-info-cont {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  @media (max-width: 768px) {
+    .balance-bet-info-cont {
+      justify-content: flex-start;
+    }
+  }
+
+  .balance-info-cont {
+    width: fit-content;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .9rem;
+    padding: 8px 16px;
+    border-radius: 15px;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  }
+
+  .bet-info-cont {
+    width: fit-content;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .9rem;
+    padding: 8px 16px;
+    border-radius: 15px;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
   }
 </style> 

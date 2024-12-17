@@ -2,6 +2,16 @@
   import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import confetti from 'canvas-confetti';
+  import { bettingStore } from '$lib/stores/betting';
+  import BettingControls from '$lib/components/BettingControls.svelte';
+  import { splitHandsStore } from '$lib/stores/splitHands';
+  import SplitHands from '$lib/components/SplitHands.svelte';
+  import type { Card } from '$lib/types/card';
+  import { setContext } from 'svelte';
+  import { sideBetStore } from '$lib/stores/sideBets';
+  import SideBets from '$lib/components/SideBets.svelte';
+  import SideBetChip from '$lib/components/SideBetChip.svelte';
+  import OdometerNumber from '$lib/components/OdometerNumber.svelte';
 
   // Game state
   let deck: Card[] = [];
@@ -13,13 +23,7 @@
   let dealerScore = 0;
   let dealingInProgress = false;
   let winningHand = '';
-
-  interface Card {
-    suit: string;
-    value: string;
-    hidden?: boolean;
-    imageUrl: string;
-  }
+  let betRequired = true;
 
   // Card setup
   const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -29,10 +33,14 @@
     const newDeck: Card[] = [];
     suits.forEach(suit => {
       values.forEach(value => {
+        const cardValue = value === '10' ? '0' : value;
+        const suitChar = suit.charAt(0).toUpperCase();
+        const imageUrl = `https://deckofcardsapi.com/static/img/${cardValue}${suitChar}.png`;
+        
         newDeck.push({
           suit,
           value,
-          imageUrl: `https://deckofcardsapi.com/static/img/${value === '10' ? '0' : value}${suit.charAt(0).toUpperCase()}.png`
+          imageUrl
         });
       });
     });
@@ -83,10 +91,17 @@
   }
 
   async function dealCards() {
+    if (betRequired && $bettingStore.currentBet === 0) {
+      gameStatus = "Place a bet to start";
+      return;
+    }
+
+    splitHandsStore.reset();
     dealingInProgress = true;
     deck = createDeck();
     playerHand = [];
     dealerHand = [];
+    bettingStore.setBetState(false);
     
     // Deal cards with animation delay
     await new Promise(resolve => setTimeout(resolve, 300));
@@ -98,6 +113,11 @@
     await new Promise(resolve => setTimeout(resolve, 300));
     dealerHand = [...dealerHand, { ...deck.pop()!, hidden: true }];
     
+    // Check for insurance availability
+    if (dealerHand[0].value === 'A') {
+      sideBetStore.setAvailability('insurance', true);
+    }
+    
     dealingInProgress = false;
     gameInProgress = true;
     gameStatus = "Your turn";
@@ -106,16 +126,44 @@
 
   function hit() {
     if (!gameInProgress) return;
-    playerHand = [...playerHand, deck.pop()!];
-    updateScores();
     
-    if (playerScore > 21) {
-      endGame('Bust! Dealer wins!');
+    if ($splitHandsStore.isSplit) {
+      const newCard = deck.pop()!;
+      splitHandsStore.addCardToCurrentHand(newCard);
+      const currentHand = $splitHandsStore.hands[$splitHandsStore.currentHandIndex];
+      const score = calculateScore(currentHand.cards);
+      splitHandsStore.updateScore($splitHandsStore.currentHandIndex, score);
+      
+      if (score > 21) {
+        splitHandsStore.finishCurrentHand();
+        if ($splitHandsStore.hands.every(h => h.done)) {
+          endGame('Bust! Dealer wins!');
+        }
+      }
+    } else {
+      playerHand = [...playerHand, deck.pop()!];
+      updateScores();
+      
+      if (playerScore > 21) {
+        endGame('Bust! Dealer wins!');
+      }
     }
   }
 
   function stand() {
     if (!gameInProgress) return;
+
+    if ($splitHandsStore.isSplit) {
+      splitHandsStore.finishCurrentHand();
+      if ($splitHandsStore.hands.every(h => h.done)) {
+        dealerPlay();
+      }
+    } else {
+      dealerPlay();
+    }
+  }
+
+  async function dealerPlay() {
     dealerHand[1].hidden = false;
     updateScores();
 
@@ -124,10 +172,42 @@
       updateScores();
     }
 
-    if (dealerScore > 21) endGame('Dealer bust! You win!');
-    else if (dealerScore > playerScore) endGame('Dealer wins!');
-    else if (dealerScore < playerScore) endGame('You win!');
-    else endGame('Push - it\'s a tie!');
+    if ($splitHandsStore.isSplit) {
+      let message = '';
+      const hands = $splitHandsStore.hands;
+      
+      if (dealerScore > 21) {
+        message = 'Dealer bust! All hands win!';
+        hands.forEach(() => bettingStore.win());
+      } else {
+        const results = hands.map(hand => {
+          if (hand.score > 21) return 'lose';
+          if (hand.score > dealerScore) return 'win';
+          if (hand.score < dealerScore) return 'lose';
+          return 'push';
+        });
+        
+        results.forEach(result => {
+          if (result === 'win') bettingStore.win();
+          else if (result === 'lose') bettingStore.lose();
+          else bettingStore.push();
+        });
+
+        const wins = results.filter(r => r === 'win').length;
+        const losses = results.filter(r => r === 'lose').length;
+        const pushes = results.filter(r => r === 'push').length;
+        
+        message = `Results: ${wins} win${wins !== 1 ? 's' : ''}, ${losses} loss${losses !== 1 ? 'es' : ''}, ${pushes} push${pushes !== 1 ? 'es' : ''}`;
+      }
+      
+      endGame(message);
+      splitHandsStore.reset();
+    } else {
+      if (dealerScore > 21) endGame('Dealer bust! You win!');
+      else if (dealerScore > playerScore) endGame('Dealer wins!');
+      else if (dealerScore < playerScore) endGame('You win!');
+      else endGame('Push - it\'s a tie!');
+    }
   }
 
   function updateScores() {
@@ -141,19 +221,44 @@
     winningHand = message.toLowerCase().includes('you win') ? 'player' : 
                   message.toLowerCase().includes('dealer wins') ? 'dealer' : '';
     
-    // Wait for card animations to complete (600ms animation + 200ms delay per card)
-    const totalDelay = 800;
-    await new Promise(resolve => setTimeout(resolve, totalDelay));
-    
-    showModal = true;
-    
+    // Calculate and show floating number
+    const betAmount = $bettingStore.currentBet;
     if (message.toLowerCase().includes('you win')) {
+      floatingAmount = betAmount * 2;
+      floatingNumberType = 'win';
+      showFloatingNumber = true;
+    } else if (message.toLowerCase().includes('dealer wins')) {
+      floatingAmount = betAmount;
+      floatingNumberType = 'loss';
+      showFloatingNumber = true;
+    }
+    
+    // Hide floating number after animation
+    setTimeout(() => {
+      showFloatingNumber = false;
+    }, 1000);
+    
+    // Evaluate side bets before handling main bet
+    sideBetStore.evaluateBets(playerHand, dealerHand, $bettingStore.currentBet);
+    
+    // Handle main bet outcome
+    if (message.toLowerCase().includes('you win')) {
+      bettingStore.win();
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 }
       });
+    } else if (message.toLowerCase().includes('dealer wins')) {
+      bettingStore.lose();
+    } else {
+      bettingStore.push();
     }
+    
+    // Reset side bet availability
+    Object.keys($sideBetStore.bets).forEach(betType => {
+      sideBetStore.setAvailability(betType as any, betType !== 'insurance');
+    });
   }
 
   // Add to existing variables
@@ -169,29 +274,79 @@
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   });
+
+  // Update the reactive statement for split detection
+  $: {
+    if (playerHand.length === 2 && $bettingStore.currentBet > 0) {
+      const canSplit = playerHand[0].value === playerHand[1].value && 
+                      $bettingStore.balance >= $bettingStore.currentBet;
+      splitHandsStore.checkCanSplit(playerHand);
+      console.log('Split check:', {
+        cards: `${playerHand[0].value}-${playerHand[1].value}`,
+        canSplit,
+        currentBet: $bettingStore.currentBet,
+        balance: $bettingStore.balance
+      });
+    } else {
+      splitHandsStore.checkCanSplit([]);
+    }
+  }
+
+  // Add the split handler function
+  function handleSplit() {
+    if (playerHand.length === 2 && $bettingStore.currentBet > 0) {
+      const [firstCard, secondCard] = playerHand;
+      splitHandsStore.initializeSplit(firstCard, secondCard, $bettingStore.currentBet);
+      playerHand = [];  // Clear the main player hand
+      gameStatus = "Playing split hands";
+    }
+  }
+
+  // Add the context for the split handler
+  setContext('handleSplit', handleSplit);
+
+  // Subscribe to split store to handle game state
+  $: if ($splitHandsStore.isSplit) {
+    playerScore = $splitHandsStore.hands[$splitHandsStore.currentHandIndex]?.score || 0;
+  }
+
+  // Add double down handler
+  async function handleDoubleDown() {
+    if (!gameInProgress) return;
+    
+    // Deal one card only
+    playerHand = [...playerHand, deck.pop()!];
+    updateScores();
+    
+    // Automatically stand after one card
+    if (playerScore <= 21) {
+      stand();
+    } else {
+      endGame('Bust! Dealer wins!');
+    }
+  }
+
+  // Add the context for double down
+  setContext('handleDoubleDown', handleDoubleDown);
+
+  // Add reactive statements to log store values
+  $: {
+    console.log('Store Debug Values:', {
+      bettingMenuOpen: $bettingStore.showBettingUI,
+      hasBet: $bettingStore.currentBet > 0,
+      sidebetsOpen: $sideBetStore.showSideBets,
+      currentBet: $bettingStore.currentBet
+    });
+  }
+
+  // Add near other reactive statements
+  let canDoubleDown = false;
+
+  // Add to script section
+  let showFloatingNumber = false;
+  let floatingAmount = 0;
+  let floatingNumberType: 'win' | 'loss' = 'win';
 </script>
-
-{#if showModal}
-  <div class="modal-overlay" 
-       on:click={() => showModal = false} 
-       transition:fade={{ duration: 200 }}>
-    <div class="modal" 
-         on:click|stopPropagation 
-         transition:fly={{ y: 20, duration: 300 }}>
-      <div class="modal-content">
-        <h2 class:win={winningHand === 'player'} 
-            class:lose={winningHand === 'dealer'}>
-          {gameStatus}
-        </h2>
-        <button class="casino-button primary" 
-                on:click={() => showModal = false}>
-          Continue
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
 <div class="game-container">
   {#if windowWidth > 768}
     <div class="deck-area">
@@ -205,11 +360,30 @@
     </div>
   {/if}
 
-  <div class="game-status" class:animate={gameStatus !== 'Press "Deal" to start'}>
-    <span class="status-text" class:win={winningHand === 'player'} class:lose={winningHand === 'dealer'}>
+  <div class="game-status" 
+       class:animate={gameStatus !== 'Press "Deal" to start'}
+       class:betting-open={$bettingStore.showBettingUI}
+       class:has-bet={$bettingStore.currentBet > 0}
+       class:gameplay-actions={gameInProgress && (canDoubleDown || $splitHandsStore.canSplit)}
+       class:sidebets-open={$sideBetStore.showSideBets && !gameInProgress}>
+    <span class="status-text" 
+          class:win={winningHand === 'player'} 
+          class:lose={winningHand === 'dealer'}
+          class:info={!winningHand}>
       {gameStatus}
     </span>
   </div>
+
+  {#if showFloatingNumber}
+    <div 
+      class="floating-number" 
+      class:win={floatingNumberType === 'win'}
+      class:loss={floatingNumberType === 'loss'}
+      transition:fly={{ y: 50, duration: 1000, opacity: 0 }}
+    >
+      {floatingNumberType === 'win' ? '+' : '-'}${floatingAmount}
+    </div>
+  {/if}
 
   <div class="game-area">
     <div class="hand-section dealer-section">
@@ -237,28 +411,33 @@
       </div>
     </div>
 
-    <div class="hand-section player-section">
-      <h3 class="hand-title">Your Hand ({playerScore})</h3>
-      <div class="cards player-cards">
-        {#each playerHand as card, i}
-          <div 
-            class="card"
-            style="--card-index: {i}; --origin-x: {-50 * i}%;"
-            in:fly|local={{
-              x: window?.innerWidth ? window.innerWidth / 2 - (i * 60) : 0,
-              y: -300,
-              duration: 600,
-              delay: i * 200
-            }}
-            out:fly|local={{y: 200, duration: 300}}
-          >
-            <img src={card.imageUrl} alt={`${card.value} of ${card.suit}`} />
-          </div>
-        {/each}
+    {#if $splitHandsStore.isSplit}
+      <SplitHands calculateScore={calculateScore} />
+    {:else}
+      <div class="hand-section player-section">
+        <h3 class="hand-title">Your Hand ({playerScore})</h3>
+        <div class="cards player-cards">
+          {#each playerHand as card, i}
+            <div 
+              class="card"
+              style="--card-index: {i}; --origin-x: {-50 * i}%;"
+              in:fly|local={{
+                x: window?.innerWidth ? window.innerWidth / 2 - (i * 60) : 0,
+                y: -300,
+                duration: 600,
+                delay: i * 200
+              }}
+              out:fly|local={{y: 200, duration: 300}}
+            >
+              <img src={card.imageUrl} alt={`${card.value} of ${card.suit}`} />
+            </div>
+          {/each}
+        </div>
       </div>
-    </div>
+    {/if}
 
     <div class="controls">
+      <BettingControls {playerHand} {gameInProgress} bind:canDoubleDown />
       <button 
         on:click={dealCards} 
         disabled={gameInProgress}
@@ -283,11 +462,15 @@
       >
         Stand
       </button>
+      {#if !gameInProgress}
+        <SideBetChip />
+      {/if}
     </div>
   </div>
 </div>
 
 <style>
+
   .game-container {
     max-width: 1200px;
     margin: 0 auto;
@@ -302,6 +485,10 @@
     padding: 1rem;
     border-radius: 12px;
     overflow: hidden;
+  }
+
+  @media (max-width: 375px) {
+    .hand-section { margin-top: 30px; }
   }
 
   .dealer-cards, .player-cards {
@@ -364,7 +551,6 @@
 
     .controls {
       background: transparent;
-      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
       padding: 0.5rem;
     }
 
@@ -387,11 +573,7 @@
 
     .hand-title {
       font-size: 0.9rem;
-      margin-bottom: 0.15rem;
-    }
-
-    .game-status {
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.16rem;
     }
 
     .status-text {
@@ -454,27 +636,82 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
+  /* Base game status */
   .game-status {
+    position: fixed;
+    bottom: 6rem !important;  /* Default state */
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1001;
     text-align: center;
     opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    margin-bottom: 2rem;
+    transition: all 0.3s ease;
+    pointer-events: none;
   }
 
   .game-status.animate {
     opacity: 1;
-    transform: translateY(0);
+  }
+
+  /* iPhone SE specific status positioning */
+  @media (max-width: 375px) {
+    .game-status {
+      bottom: 4.5rem !important;
+    }
+
+    .game-status.betting-open {
+      bottom: 4.5rem !important;
+    }
+
+    .game-status.sidebets-open {
+      bottom: 20rem !important;
+    }
+  }
+
+  /* Larger screens status positioning */
+  @media (min-width: 376px) {
+    .game-status.betting-open:not(.gameplay-actions):not(.sidebets-open) {
+      bottom: 16rem !important;
+    }
+
+    .game-status.betting-open.gameplay-actions:not(.sidebets-open) {
+      bottom: 6rem !important;
+    }
+
+    .game-status.sidebets-open {
+      bottom: 20rem !important;
+    }
   }
 
   .status-text {
     display: inline-block;
-    padding: 0.75rem 2rem;
+    padding: 0.5rem 1.5rem;
     border-radius: 8px;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     font-weight: bold;
     color: #fff;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    box-shadow: 
+      0 4px 15px rgba(0,0,0,0.2),
+      0 0 20px rgba(52,152,219,0.2);
+  }
+
+  .status-text.win {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    box-shadow: 
+      0 4px 15px rgba(0,0,0,0.2),
+      0 0 20px rgba(46,204,113,0.2);
+  }
+
+  .status-text.lose {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    box-shadow: 
+      0 4px 15px rgba(0,0,0,0.2),
+      0 0 20px rgba(231,76,60,0.2);
+  }
+
+  .status-text.info {
     background: linear-gradient(135deg, #2c3e50, #3498db);
     box-shadow: 
       0 4px 15px rgba(0,0,0,0.2),
@@ -503,26 +740,22 @@
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 1rem;
+    padding: 0.75rem;
     z-index: 100;
     backdrop-filter: blur(10px);
     display: flex;
     justify-content: center;
-    gap: 1.5rem;
+    gap: 0.75rem;
+    background: transparent;
   }
 
   .casino-button {
-    min-width: 120px;
-    padding: 0.75rem 1.5rem;
-    font-size: 1.2rem;
-  }
-
-  .casino-button {
-    font-size: 1.5rem;
+    min-width: 60px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
     font-weight: bold;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    padding: 1rem 3rem;
+    letter-spacing: 1px;
     border: none;
     border-radius: 50px;
     cursor: pointer;
@@ -676,6 +909,11 @@
     .card:hover {
       transform: translateY(-10px) rotate(calc(var(--card-index) * 5deg - 10deg)) translateX(calc(var(--card-index) * 20px - 40px));
     }
+
+    .status-text {
+      font-size: 1rem;
+      padding: 0.4rem 1.2rem;
+    }
   }
 
   .modal-overlay {
@@ -717,6 +955,251 @@
 
   .modal-content h2.lose {
     color: #e74c3c;
+  }
+
+  .current-bet {
+    text-align: center;
+    color: #ffd700;
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  }
+
+  .player-stats {
+    text-align: center;
+    margin-bottom: 0.8rem;
+  }
+
+  .stat-line {
+    color: #ffd700;
+    font-size: 1rem;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    margin: 0.2rem 0;
+  }
+
+  .game-area {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  @media (max-width: 375px) {
+    .game-area {
+      margin-top: 3rem;
+    }
+  }
+
+  /* Side-by-side layout for wider screens */
+  @media (min-width: 768px) and (max-height: 1200px) {
+    .game-area {
+      flex-direction: row;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 4rem;
+      padding: 0 2rem;
+      margin-top: 6rem; /* Increased space for deck and status */
+    }
+
+    .hand-section {
+      flex: 1;
+      max-width: 45%;
+      min-width: 300px;
+    }
+
+    /* Keep deck area at top */
+    .deck-area {
+      position: absolute;
+      top: 4rem; /* Below status message */
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1;
+    }
+
+    /* Handle split hands */
+    .split-hands-container {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      max-width: 45%;
+    }
+
+    .split-hand {
+      flex: 1;
+      min-width: 200px;
+      max-width: calc(50% - 0.5rem);
+    }
+
+    /* Adjust card sizes and rotation */
+    .card img {
+      width: 80px;
+    }
+
+    .card {
+      transform: rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 20px - 40px));
+    }
+
+    .card:hover {
+      transform: translateY(-10px) rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 20px - 40px));
+    }
+  }
+
+  /* Adjustments for shorter heights */
+  @media (min-width: 768px) and (max-height: 800px) {
+    .game-area {
+      margin-top: 5rem;
+    }
+
+    .deck-area {
+      top: 3rem;
+    }
+
+    .card img {
+      width: 70px;
+    }
+
+    .hand-title {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .player-stats {
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+  }
+
+  /* Ensure betting menus don't overlap */
+  .betting-dropdown, 
+  .side-betting-dropdown {
+    @media (min-width: 768px) and (max-height: 1200px) {
+      position: fixed;
+      bottom: 5rem;
+      max-height: calc(100vh - 12rem);
+      overflow-y: auto;
+      z-index: 1000;
+    }
+  }
+
+  /* iPhone SE and similar small screens */
+  @media (max-width: 375px) {
+    .game-container {
+      padding: 0.25rem;
+      padding-bottom: 70px;
+      margin-top: -1.5rem;
+    }
+
+    .dealer-section {
+      margin-top: -1.5rem;
+      padding: 0.25rem;
+    }
+
+    .player-section {
+      margin-top: -1rem;
+    }
+
+    .hand-title {
+      font-size: 0.75rem;
+      margin-bottom: 0.16rem;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .dealer-cards, .player-cards {
+      min-height: 90px;
+      margin-bottom: 0.25rem;
+    }
+
+    .card img {
+      width: 55px;
+    }
+
+    /* Adjust card positioning for larger cards */
+    .card {
+      transform: rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 18px - 36px));
+    }
+
+    .card:hover {
+      transform: translateY(-5px) rotate(calc(var(--card-index) * 3deg - 6deg)) translateX(calc(var(--card-index) * 18px - 36px));
+    }
+
+    .controls {
+      padding: 0.35rem;
+      gap: 0.25rem;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 1002;
+    }
+
+    .casino-button {
+      min-width: 45px;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.75rem;
+    }
+
+    /* Game status positioning */
+    .game-status {
+      transform: translate(-50%, -60px);
+    }
+
+    .game-status.betting-open:not(.gameplay-actions):not(.sidebets-open),
+    .game-status.betting-open.gameplay-actions:not(.sidebets-open) {
+      bottom: 1 !important;
+    }
+
+    .game-status.sidebets-open {
+      bottom: 20rem !important;
+    }
+
+    .status-text {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.7rem;
+    }
+
+    /* Make balance/bet text smaller */
+    .balance, .bet {
+      font-size: 0.65rem;
+    }
+
+    /* Adjust header text */
+    .learn-blackjack-header {
+      font-size: 0.65rem;
+      padding: 0.25rem;
+    }
+
+    .learn-blackjack-header .balance,
+    .learn-blackjack-header .bet {
+      font-size: 0.6rem;
+    }
+  }
+
+  .floating-number {
+    position: fixed;
+    left: 50%;
+    bottom: 8rem;
+    transform: translateX(-50%);
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 1.5rem;
+    z-index: 1002;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+
+  .floating-number.win {
+    color: #2ecc71;
+  }
+
+  .floating-number.loss {
+    color: #e74c3c;
+  }
+
+  @media (max-width: 375px) {
+    .floating-number {
+      font-size: 1.2rem;
+      bottom: 6rem;
+    }
   }
 </style>
 
