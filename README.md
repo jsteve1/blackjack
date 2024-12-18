@@ -2,7 +2,7 @@
 
 A modern, interactive Blackjack game built with SvelteKit. Play now at [https://jsteve1.github.io/blackjack](https://jsteve1.github.io/blackjack)
 
-![Blackjack Game Screenshot](https://github.com/jsteve1/blackjack/blob/main/screenshots/screenshot.png?raw=true)
+![Blackjack Game Screenshot](https://raw.githubusercontent.com/jsteve1/blackjack/refs/heads/main/screenshots/screenshot.PNG)
 
 ## Features
 
